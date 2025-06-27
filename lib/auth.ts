@@ -1,19 +1,14 @@
-// This is a mock implementation for demonstration purposes
-// In a real app, you would use a proper authentication system
+import { supabase } from './supabase'
+import type { Database } from './database.types'
 
-interface User {
-  id: string
-  name: string
-  email: string
-  role: "user"
-  image?: string
-}
+type User = Database['public']['Tables']['users']['Row']
 
 interface SignupData {
   name: string
   email: string
   password: string
-  role: string
+  role: 'user' | 'admin'
+  adminCode?: string
 }
 
 interface LoginData {
@@ -21,73 +16,197 @@ interface LoginData {
   password: string
 }
 
-// Mock user database
-const users: User[] = [
-  {
-    id: "1",
-    name: "Test User",
-    email: "user@example.com",
-    role: "user",
-  },
-]
-
 export async function createUserAccount(data: SignupData): Promise<User> {
-  // Simulate API request delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  try {
+    // Validate admin code if role is admin
+    if (data.role === 'admin' && data.adminCode !== '123456') {
+      throw new Error('Invalid admin code')
+    }
 
-  // Check if user already exists
-  if (users.some((user) => user.email === data.email)) {
-    throw new Error("User with this email already exists")
+    // Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          full_name: data.name,
+          role: data.role
+        }
+      }
+    })
+
+    if (authError) {
+      throw new Error(authError.message)
+    }
+
+    if (!authData.user) {
+      throw new Error('Failed to create user')
+    }
+
+    // Create user profile
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+      })
+      .select()
+      .single()
+
+    if (userError) {
+      console.error('User profile creation error:', userError)
+      // If user profile creation fails, still return the auth user data
+      return {
+        id: authData.user.id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+        image: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    }
+
+    return userData
+  } catch (error) {
+    console.error('Account creation error:', error)
+    throw error
   }
-
-  // Create new user (all users are regular users now)
-  const newUser: User = {
-    id: String(users.length + 1),
-    name: data.name,
-    email: data.email,
-    role: "user",
-  }
-
-  // Add user to database
-  users.push(newUser)
-
-  return newUser
 }
 
 export async function loginUser(data: LoginData): Promise<User> {
-  // Simulate API request delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  try {
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+    })
 
-  // Find user by email
-  const user = users.find((user) => user.email === data.email)
+    if (authError) {
+      throw new Error(authError.message)
+    }
 
-  // Check if user exists and password is correct
-  // In a real app, you would hash and compare passwords
-  if (!user) {
-    throw new Error("Invalid email or password")
+    if (!authData.user) {
+      throw new Error('Failed to login')
+    }
+
+    // Get user profile
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (userError) {
+      console.error('User profile fetch error:', userError)
+      // If user profile doesn't exist, create it
+      const { data: newUserData, error: createError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: authData.user.email!,
+          name: authData.user.user_metadata?.full_name || authData.user.email!.split('@')[0],
+          role: 'user',
+          image: authData.user.user_metadata?.avatar_url
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('User profile creation error:', createError)
+        // Return minimal user data
+        return {
+          id: authData.user.id,
+          email: authData.user.email!,
+          name: authData.user.user_metadata?.full_name || authData.user.email!.split('@')[0],
+          role: 'user',
+          image: authData.user.user_metadata?.avatar_url || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      }
+
+      return newUserData
+    }
+
+    return userData
+  } catch (error) {
+    console.error('Login error:', error)
+    throw error
   }
+}
 
-  // Set user in localStorage (in a real app, you would use a proper auth token)
-  localStorage.setItem("currentUser", JSON.stringify(user))
+export async function loginWithGoogle(): Promise<void> {
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
 
-  return user
+    if (error) {
+      throw new Error(error.message)
+    }
+  } catch (error) {
+    console.error('Google login error:', error)
+    throw error
+  }
 }
 
 export async function logoutUser(): Promise<void> {
-  // Simulate API request delay
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  // Remove user from localStorage
-  localStorage.removeItem("currentUser")
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      throw new Error(error.message)
+    }
+  } catch (error) {
+    console.error('Logout error:', error)
+    throw error
+  }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  // In a real app, you would validate the token with your backend
-  const userJson = localStorage.getItem("currentUser")
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      return null
+    }
 
-  if (!userJson) {
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+
+    if (error) {
+      console.error('Get current user error:', error)
+      // If user profile doesn't exist, create it
+      const { data: newUserData, error: createError } = await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email: user.email!,
+          name: user.user_metadata?.full_name || user.email!.split('@')[0],
+          role: 'user',
+          image: user.user_metadata?.avatar_url
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('User profile creation error:', createError)
+        return null
+      }
+
+      return newUserData
+    }
+
+    return userData
+  } catch (error) {
+    console.error('Get current user error:', error)
     return null
   }
-
-  return JSON.parse(userJson)
 }

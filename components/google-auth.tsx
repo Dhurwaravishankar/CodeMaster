@@ -8,12 +8,14 @@ import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
 import { Loader2, LogOut, Mail } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useRouter } from "next/navigation"
 
 export function GoogleAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [signingIn, setSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     // Get initial session
@@ -41,12 +43,14 @@ export function GoogleAuth() {
         if (event === 'SIGNED_IN' && session?.user) {
           // Create or update user profile in our users table
           await createOrUpdateUserProfile(session.user)
+          // Redirect to dashboard
+          router.push('/user/dashboard')
         }
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [router])
 
   const createOrUpdateUserProfile = async (authUser: User) => {
     try {
@@ -100,6 +104,7 @@ export function GoogleAuth() {
       if (error) {
         throw error
       }
+      router.push('/')
     } catch (error) {
       console.error('Error signing out:', error)
       setError(error instanceof Error ? error.message : 'Failed to sign out')
@@ -147,10 +152,6 @@ export function GoogleAuth() {
                 <span className="text-sm">{user.user_metadata.full_name}</span>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">User ID:</span>
-              <span className="text-sm font-mono text-xs">{user.id}</span>
-            </div>
           </div>
           
           {error && (
@@ -159,15 +160,23 @@ export function GoogleAuth() {
             </Alert>
           )}
 
-          <Button 
-            onClick={signOut} 
-            variant="outline" 
-            className="w-full"
-            disabled={loading}
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={signOut} 
+              variant="outline" 
+              className="flex-1"
+              disabled={loading}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+            <Button 
+              onClick={() => router.push('/user/dashboard')} 
+              className="flex-1"
+            >
+              Dashboard
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )

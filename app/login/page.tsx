@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Code, Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react"
-import { loginUser } from "@/lib/auth"
+import { loginUser, loginWithGoogle } from "@/lib/auth"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { motion } from "framer-motion"
@@ -47,7 +47,6 @@ export default function LoginPage() {
 
     try {
       const user = await loginUser(formData)
-      // All users go to user dashboard now
       router.push("/user/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password")
@@ -58,13 +57,12 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     setLoading(true)
+    setError("")
     try {
-      // In a real app, this would integrate with Firebase or another OAuth provider
-      console.log("Google Sign-In clicked")
-      // After successful sign-in, redirect to user dashboard
-      router.push("/user/dashboard")
+      await loginWithGoogle()
+      // The redirect will be handled by the auth state change listener
     } catch (err) {
-      setError("Google sign-in failed. Please try again.")
+      setError(err instanceof Error ? err.message : "Google sign-in failed. Please try again.")
     } finally {
       setLoading(false)
     }

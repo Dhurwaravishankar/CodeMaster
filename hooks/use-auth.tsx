@@ -38,13 +38,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event)
         setUser(session?.user ?? null)
         setLoading(false)
+        
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Create or update user profile in our users table
+          await createOrUpdateUserProfile(session.user)
+        }
       }
     )
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const createOrUpdateUserProfile = async (authUser: User) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .upsert({
+          id: authUser.id,
+          email: authUser.email!,
+          name: authUser.user_metadata?.full_name || authUser.email!.split('@')[0],
+          image: authUser.user_metadata?.avatar_url,
+          role: 'user'
+        }, {
+          onConflict: 'id'
+        })
+
+      if (error) {
+        console.error('Error creating/updating user profile:', error)
+      }
+    } catch (error) {
+      console.error('Error in createOrUpdateUserProfile:', error)
+    }
+  }
 
   const signOut = async () => {
     try {
