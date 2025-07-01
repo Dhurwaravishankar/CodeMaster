@@ -1,10 +1,3 @@
-let userConfig = undefined
-try {
-  userConfig = await import('./v0-user-next.config')
-} catch (e) {
-  // ignore error
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -16,33 +9,35 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Disable caching to avoid build issues
   experimental: {
-    webpackBuildWorker: true,
-    parallelServerBuildTraces: true,
-    parallelServerCompiles: true,
+    webpackBuildWorker: false,
+    parallelServerBuildTraces: false,
+    parallelServerCompiles: false,
   },
-}
-
-mergeConfig(nextConfig, userConfig)
-
-function mergeConfig(nextConfig, userConfig) {
-  if (!userConfig) {
-    return
-  }
-
-  for (const key in userConfig) {
-    if (
-      typeof nextConfig[key] === 'object' &&
-      !Array.isArray(nextConfig[key])
-    ) {
-      nextConfig[key] = {
-        ...nextConfig[key],
-        ...userConfig[key],
+  // Fix hydration issues
+  reactStrictMode: false,
+  swcMinify: false,
+  // Webpack configuration
+  webpack: (config, { isServer }) => {
+    // Ignore warnings that can cause build failures
+    config.ignoreWarnings = [
+      { module: /node_modules\/next-themes/ },
+      { module: /node_modules\/@supabase/ }
+    ]
+    
+    // Fix for Supabase in browser
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
       }
-    } else {
-      nextConfig[key] = userConfig[key]
     }
-  }
+    
+    return config
+  },
 }
 
 export default nextConfig

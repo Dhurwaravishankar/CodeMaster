@@ -22,35 +22,13 @@ export interface LoginData {
   password: string
 }
 
-// Clear any cached user data on app start
+// Clear any cached user data
 export async function clearCachedUserData(): Promise<void> {
   try {
-    // Clear localStorage
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('supabase.auth.token')
-      localStorage.removeItem('sb-fjfnkdpmkziirmldnhxj-auth-token')
-      localStorage.removeItem('user-profile')
-      localStorage.removeItem('user-data')
-      localStorage.removeItem('john-doe-data')
-      
-      // Clear sessionStorage
-      sessionStorage.removeItem('supabase.auth.token')
-      sessionStorage.removeItem('sb-fjfnkdpmkziirmldnhxj-auth-token')
-      sessionStorage.removeItem('user-profile')
-      sessionStorage.removeItem('user-data')
-      sessionStorage.removeItem('john-doe-data')
-      
-      // Clear any cookies related to auth
-      document.cookie.split(";").forEach((c) => {
-        const eqPos = c.indexOf("=")
-        const name = eqPos > -1 ? c.substr(0, eqPos) : c
-        if (name.trim().includes('auth') || name.trim().includes('supabase') || name.trim().includes('john')) {
-          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`
-        }
-      })
+      localStorage.clear()
+      sessionStorage.clear()
     }
-    
-    // Sign out from Supabase to clear any session
     await supabase.auth.signOut()
   } catch (error) {
     console.error('Error clearing cached user data:', error)
@@ -60,7 +38,6 @@ export async function clearCachedUserData(): Promise<void> {
 // Sign up with email verification
 export async function createUserAccount(data: SignupData): Promise<{ user: User | null; needsVerification: boolean }> {
   try {
-    // Clear any existing data first
     await clearCachedUserData()
     
     const { data: authData, error } = await supabase.auth.signUp({
@@ -78,12 +55,10 @@ export async function createUserAccount(data: SignupData): Promise<{ user: User 
       throw error
     }
 
-    // If user is created but not confirmed, they need to verify email
     if (authData.user && !authData.user.email_confirmed_at) {
       return { user: authData.user, needsVerification: true }
     }
 
-    // If user is immediately confirmed (rare), create user record
     if (authData.user && authData.user.email_confirmed_at) {
       await userOperations.insertUser({
         name: data.name,
@@ -102,7 +77,6 @@ export async function createUserAccount(data: SignupData): Promise<{ user: User 
 // Login with email verification check
 export async function loginUser(data: LoginData): Promise<AuthUser> {
   try {
-    // Clear any existing data first
     await clearCachedUserData()
     
     const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -111,7 +85,6 @@ export async function loginUser(data: LoginData): Promise<AuthUser> {
     })
 
     if (error) {
-      // Handle specific email confirmation error
       if (error.message === 'Email not confirmed' || error.message.includes('email_not_confirmed')) {
         throw new Error('Please verify your email before logging in. Check your inbox for the verification link.')
       }
@@ -122,16 +95,13 @@ export async function loginUser(data: LoginData): Promise<AuthUser> {
       throw new Error('Login failed')
     }
 
-    // Check if email is verified
     if (!authData.user.email_confirmed_at) {
       throw new Error('Please verify your email before logging in. Check your inbox for the verification link.')
     }
 
-    // Get or create user record in users table
     let userRecord = await userOperations.getUserByUserId(authData.user.id)
     
     if (!userRecord) {
-      // Create user record if it doesn't exist
       userRecord = await userOperations.insertUser({
         name: authData.user.user_metadata?.name || authData.user.user_metadata?.full_name || 'User',
         email: authData.user.email!,
@@ -156,7 +126,6 @@ export async function loginUser(data: LoginData): Promise<AuthUser> {
 // Google OAuth login
 export async function loginWithGoogle(): Promise<{ url?: string; error?: string }> {
   try {
-    // Clear any existing data first
     await clearCachedUserData()
     
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -182,7 +151,7 @@ export async function loginWithGoogle(): Promise<{ url?: string; error?: string 
   }
 }
 
-// Handle OAuth callback and create user record
+// Handle OAuth callback
 export async function handleOAuthCallback(): Promise<AuthUser | null> {
   try {
     const { data: { user }, error } = await supabase.auth.getUser()
@@ -192,12 +161,9 @@ export async function handleOAuthCallback(): Promise<AuthUser | null> {
       return null
     }
 
-    // For OAuth users, email is automatically confirmed
-    // Get or create user record in users table
     let userRecord = await userOperations.getUserByUserId(user.id)
     
     if (!userRecord) {
-      // Create user record for OAuth user
       userRecord = await userOperations.insertUser({
         name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
         email: user.email!,
@@ -219,12 +185,10 @@ export async function handleOAuthCallback(): Promise<AuthUser | null> {
   }
 }
 
-// Logout user and clear all data
+// Logout user
 export async function logoutUser(): Promise<void> {
   try {
-    // Clear cached data first
     await clearCachedUserData()
-    
     const { error } = await supabase.auth.signOut()
     if (error) {
       throw error
@@ -235,7 +199,7 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
-// Get current user - ensures no cached John Doe data
+// Get current user
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     const { data: { user }, error } = await supabase.auth.getUser()
@@ -244,23 +208,13 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       return null
     }
 
-    // For OAuth users, email is automatically confirmed
-    // For email/password users, check if email is verified
     if (user.app_metadata?.provider === 'email' && !user.email_confirmed_at) {
       return null
     }
 
-    // Get user record from users table
     const userRecord = await userOperations.getUserByUserId(user.id)
     
     if (!userRecord) {
-      return null
-    }
-
-    // Ensure we never return John Doe data
-    if (userRecord.name === 'John Doe' || userRecord.email === 'john@example.com') {
-      console.warn('Found John Doe data, clearing...')
-      await clearCachedUserData()
       return null
     }
 
@@ -304,7 +258,6 @@ export async function updateUserProfile(updates: { name?: string; image?: string
       throw new Error('User not authenticated')
     }
 
-    // Update auth metadata if needed
     if (updates.name) {
       const { error: updateError } = await supabase.auth.updateUser({
         data: { name: updates.name }
@@ -315,13 +268,11 @@ export async function updateUserProfile(updates: { name?: string; image?: string
       }
     }
 
-    // Update user record in users table
     const userRecord = await userOperations.getUserByUserId(user.id)
     if (userRecord && updates.name) {
       await userOperations.updateUser(userRecord.id, { name: updates.name })
     }
 
-    // Return updated user
     return await getCurrentUser() as AuthUser
   } catch (error) {
     console.error('Update profile error:', error)

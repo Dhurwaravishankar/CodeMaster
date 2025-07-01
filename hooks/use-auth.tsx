@@ -21,7 +21,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Clear any cached data first
     const initializeAuth = async () => {
       try {
         await clearCachedUserData()
@@ -37,7 +36,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth state changes
     const { data: { subscription } } = onAuthStateChange((user) => {
       setUser(user)
       setLoading(false)
